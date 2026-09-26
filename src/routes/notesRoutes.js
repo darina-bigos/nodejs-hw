@@ -26,3 +26,5 @@ router.delete('/notes/:noteId', noteIdSchema, deleteNote);
 router.patch('/notes/:noteId', updateNoteSchema, updateNote);
 
 export const notesRouter = router;
+
+export default router;
