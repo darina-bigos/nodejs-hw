@@ -16,7 +16,9 @@ dotenv.config();
 const PORT = process.env.PORT || 3000;
 
 export const startServer = async () => {
+  console.log('Starting server initialization...');
   await connectMongoDB();
+  console.log('Connected to MongoDB successfully!');
 
   const app = express();
 
