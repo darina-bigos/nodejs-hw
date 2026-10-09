@@ -5,31 +5,33 @@ import {
   loginUser,
   refreshUserSession,
   logoutUser,
+  requestResetEmail,
+  resetPassword,
 } from '../controllers/authController.js';
 import {
   registerUserSchema,
   loginUserSchema,
+  requestResetEmailSchema,
+  resetPasswordSchema,
 } from '../validations/authValidation.js';
 
 const router = Router();
 
-router.post('/auth/register', celebrate(registerUserSchema), registerUser);
-router.post('/auth/login', celebrate(loginUserSchema), loginUser);
+router.post(
+  '/auth/register',
+  celebrate({ [Segments.BODY]: registerUserSchema }),
+  registerUser,
+);
+
+router.post(
+  '/auth/login',
+  celebrate({ [Segments.BODY]: loginUserSchema }),
+  loginUser,
+);
+
 router.post('/auth/refresh', refreshUserSession);
 router.post('/auth/logout', logoutUser);
 
-import {
-  requestResetEmail,
-  resetPassword,
-  // інші контролери...
-} from '../controllers/authController.js';
-import {
-  requestResetEmailSchema,
-  resetPasswordSchema,
-  // інші схеми...
-} from '../validations/authValidation.js';
-
-// Додайте роути:
 router.post(
   '/auth/request-reset-email',
   celebrate({ [Segments.BODY]: requestResetEmailSchema }),
