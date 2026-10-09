@@ -1,4 +1,4 @@
-import { celebrate, Joi } from 'celebrate';
+import { Joi } from 'celebrate';
 import { Types } from 'mongoose';
 import { TAGS } from '../constants/tags.js';
 
@@ -9,22 +9,22 @@ const validateId = (value, helpers) => {
   return value;
 };
 
-export const getAllNotesSchema = celebrate({
+export const getAllNotesSchema = {
   query: Joi.object({
     page: Joi.number().integer().min(1).default(1),
     perPage: Joi.number().integer().min(5).max(20).default(10),
     tag: Joi.string().valid(...TAGS),
     search: Joi.string().allow('').optional(),
   }),
-});
+};
 
-export const noteIdSchema = celebrate({
+export const noteIdSchema = {
   params: Joi.object({
     noteId: Joi.string().custom(validateId, 'ObjectId validation').required(),
   }),
-});
+};
 
-export const createNoteSchema = celebrate({
+export const createNoteSchema = {
   body: Joi.object({
     title: Joi.string().min(1).required(),
     content: Joi.string().allow('').optional(),
@@ -32,9 +32,9 @@ export const createNoteSchema = celebrate({
       .valid(...TAGS)
       .optional(),
   }),
-});
+};
 
-export const updateNoteSchema = celebrate({
+export const updateNoteSchema = {
   params: Joi.object({
     noteId: Joi.string().custom(validateId, 'ObjectId validation').required(),
   }),
@@ -45,4 +45,4 @@ export const updateNoteSchema = celebrate({
       .valid(...TAGS)
       .optional(),
   }).min(1),
-});
+};
