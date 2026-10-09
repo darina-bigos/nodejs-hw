@@ -43,6 +43,9 @@ export const loginUser = async (req, res, next) => {
       throw createHttpError(401, 'Invalid credentials');
     }
 
+    // Видаляємо всі існуючі сесії користувача перед створенням нової
+    await Session.deleteMany({ userId: user._id });
+
     const session = await createSession(user._id);
     setSessionCookies(res, session);
 
@@ -62,6 +65,12 @@ export const refreshUserSession = async (req, res, next) => {
     }
 
     if (new Date() > new Date(session.refreshTokenValidUntil)) {
+      // Якщо refresh token прострочено, видаляємо сесію та очищуємо куки
+      await Session.deleteOne({ _id: session._id });
+      res.clearCookie('sessionId');
+      res.clearCookie('accessToken');
+      res.clearCookie('refreshToken');
+
       throw createHttpError(401, 'Session token expired');
     }
 
