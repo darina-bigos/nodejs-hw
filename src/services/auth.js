@@ -60,7 +60,10 @@ export const loginUserService = async ({ email, password }) => {
   return await createSession(user._id);
 };
 
-export const refreshUsersSession = async ({ sessionId, refreshToken }) => {
+export const refreshUsersSessionService = async ({
+  sessionId,
+  refreshToken,
+}) => {
   const session = await Session.findOne({
     _id: sessionId,
     refreshToken,
