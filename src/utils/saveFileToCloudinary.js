@@ -1,27 +1,24 @@
-import cloudinary from 'cloudinary';
-import { env } from '../../.env';
+import { v2 as cloudinary } from 'cloudinary';
+import streamifier from 'streamifier';
+import dotenv from 'dotenv';
 
-cloudinary.v2.config({
-  cloud_name: env('CLOUDINARY_CLOUD_NAME'),
-  api_key: env('CLOUDINARY_API_KEY'),
-  api_secret: env('CLOUDINARY_API_SECRET'),
+dotenv.config();
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-export const saveFileToCloudinary = async (file, userId) => {
+export const saveFileToCloudinary = (fileBuffer) => {
   return new Promise((resolve, reject) => {
-    const uploadStream = cloudinary.v2.uploader.upload_stream(
-      {
-        resource_type: 'image',
-        public_id: userId,
-        overwrite: true,
-        unique_filename: false,
-      },
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { folder: 'avatars' },
       (error, result) => {
         if (error) return reject(error);
-        resolve(result.secure_url);
+        resolve(result);
       },
     );
-
-    uploadStream.end(file.buffer);
+    streamifier.createReadStream(fileBuffer).pipe(uploadStream);
   });
 };
