@@ -1,22 +1,22 @@
 import createHttpError from 'http-errors';
-import { User } from '../models/user.js'; // або шлях до вашої моделі користувача
+import { User } from '../models/user.js';
 import { saveFileToCloudinary } from '../utils/saveFileToCloudinary.js';
 
-export const updateUserAvatar = async (req, res, next) => {
+export const updateUserAvatarController = async (req, res, next) => {
   try {
-    // Перевіряємо, чи завантажено файл
     if (!req.file) {
-      throw createHttpError(400, 'Avatar file is missing');
+      throw createHttpError(400, 'File is missing');
     }
 
-    // Передаємо і файл, і userId у функцію завантаження
-    const avatarUrl = await saveFileToCloudinary(req.file, req.user._id);
+    const userId = req.user._id;
 
-    // Оновлюємо користувача в базі, використовуючи { returnDocument: 'after' }
+    // Передаємо req.file, а не req.file.buffer (якщо утиліта читає file.buffer всередині)
+    const uploadResult = await saveFileToCloudinary(req.file, userId);
+
     const updatedUser = await User.findByIdAndUpdate(
-      req.user._id,
-      { avatar: avatarUrl },
-      { returnDocument: 'after' },
+      userId,
+      { avatar: uploadResult.secure_url },
+      { new: true, returnDocument: 'after' },
     );
 
     if (!updatedUser) {
@@ -24,11 +24,7 @@ export const updateUserAvatar = async (req, res, next) => {
     }
 
     res.status(200).json({
-      status: 200,
-      message: 'Successfully updated avatar!',
-      data: {
-        avatar: updatedUser.avatar,
-      },
+      url: updatedUser.avatar,
     });
   } catch (error) {
     next(error);

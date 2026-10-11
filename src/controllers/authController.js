@@ -1,50 +1,113 @@
+import crypto from 'crypto';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import createHttpError from 'http-errors';
-import {
-  registerUserService,
-  loginUserService,
-  logoutUserService,
-  refreshUsersSessionService,
-  requestResetTokenService,
-  resetPasswordService,
-} from '../services/auth.js';
-import { createSession, setSessionCookies } from '../services/auth.js'; // або з відповідного файлу сервісів
-import { sendEmail } from '../utils/sendMail.js';
 import handlebars from 'handlebars';
 import path from 'path';
 import fs from 'fs/promises';
+import { User } from '../models/user.js';
+import { Session } from '../models/session.js';
+import { sendEmail } from '../utils/sendMail.js';
+import { FIFTEEN_MINUTES, ONE_DAY } from '../constants/time.js';
+
+// Допоміжні функції для роботи з сесіями та кукі у контролерах
+const createSessionRecord = async (userId) => {
+  await Session.deleteOne({ userId });
+
+  const accessToken = crypto.randomBytes(30).toString('base64');
+  const refreshToken = crypto.randomBytes(30).toString('base64');
+
+  const accessTokenValidUntil = new Date(Date.now() + FIFTEEN_MINUTES);
+  const refreshTokenValidUntil = new Date(Date.now() + ONE_DAY);
+
+  return await Session.create({
+    userId,
+    accessToken,
+    refreshToken,
+    accessTokenValidUntil,
+    refreshTokenValidUntil,
+  });
+};
+
+const setupSessionCookies = (res, session) => {
+  res.cookie('accessToken', session.accessToken, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    maxAge: FIFTEEN_MINUTES,
+  });
+
+  res.cookie('refreshToken', session.refreshToken, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    maxAge: ONE_DAY,
+  });
+
+  res.cookie('sessionId', session._id.toString(), {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    maxAge: ONE_DAY,
+  });
+};
 
 export const registerUser = async (req, res, next) => {
   try {
-    const existingUser = await registerUserService(req.body);
+    const { email, password } = req.body;
 
-    const session = await createSession(existingUser._id);
-    setSessionCookies(res, session);
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      throw createHttpError(409, 'Email in use');
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = await User.create({
+      ...req.body,
+      password: hashedPassword,
+    });
 
     res.status(201).json({
       status: 201,
       message: 'Successfully registered a user!',
-      data: existingUser,
+      data: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
     });
   } catch (error) {
-    if (error.status === 409) {
-      return next(createHttpError(400, 'Email in use'));
-    }
     next(error);
   }
 };
 
 export const loginUser = async (req, res, next) => {
   try {
-    const sessionData = await loginUserService(req.body); // Повертає сесію та юзера або об'єкт з ними
+    const { email, password } = req.body;
 
-    setSessionCookies(res, sessionData);
+    const user = await User.findOne({ email });
+    if (!user) {
+      throw createHttpError(404, 'User not found');
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      throw createHttpError(401, 'Unauthorized');
+    }
+
+    await Session.deleteOne({ userId: user._id });
+    const session = await createSessionRecord(user._id);
+
+    setupSessionCookies(res, session);
 
     res.status(200).json({
       status: 200,
       message: 'Successfully logged in an user!',
       data: {
-        accessToken: sessionData.accessToken,
-        user: sessionData.user,
+        accessToken: session.accessToken,
       },
     });
   } catch (error) {
@@ -56,39 +119,47 @@ export const refreshUserSession = async (req, res, next) => {
   try {
     const { sessionId, refreshToken } = req.cookies;
 
-    const newSession = await refreshUsersSessionService({
-      sessionId,
+    const session = await Session.findOne({
+      _id: sessionId,
       refreshToken,
     });
 
-    setSessionCookies(res, newSession);
+    if (!session) {
+      throw createHttpError(401, 'Session not found');
+    }
+
+    const isSessionTokenExpired =
+      new Date() > new Date(session.refreshTokenValidUntil);
+    if (isSessionTokenExpired) {
+      throw createHttpError(401, 'Session token expired');
+    }
+
+    await Session.deleteOne({ _id: sessionId });
+    const newSession = await createSessionRecord(session.userId);
+
+    setupSessionCookies(res, newSession);
 
     res.status(200).json({
       status: 200,
-      message: 'Successfully refreshed session!',
+      message: 'Successfully refreshed a session!',
       data: {
         accessToken: newSession.accessToken,
       },
     });
   } catch (error) {
-    res.clearCookie('sessionId');
-    res.clearCookie('refreshToken');
-    res.clearCookie('accessToken');
     next(error);
   }
 };
 
 export const logoutUser = async (req, res, next) => {
   try {
-    const { sessionId } = req.cookies;
-    if (sessionId) {
-      await logoutUserService(sessionId);
+    if (req.cookies.sessionId) {
+      await Session.deleteOne({ _id: req.cookies.sessionId });
     }
 
-    // Очищуємо всі три cookies за вимогою тесту
-    res.clearCookie('sessionId');
-    res.clearCookie('refreshToken');
     res.clearCookie('accessToken');
+    res.clearCookie('refreshToken');
+    res.clearCookie('sessionId');
 
     res.status(204).send();
   } catch (error) {
@@ -99,25 +170,48 @@ export const logoutUser = async (req, res, next) => {
 export const requestResetEmail = async (req, res, next) => {
   try {
     const { email } = req.body;
-    const resetToken = await requestResetTokenService(email);
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(200).json({
+        status: 200,
+        message: 'Reset password email has been successfully sent.',
+        data: {},
+      });
+    }
+
+    const resetToken = jwt.sign(
+      {
+        sub: user._id,
+        email: user.email,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '15m' },
+    );
 
     const templatePath = path.resolve(
       'src/templates/reset-password-email.html',
     );
     const templateSource = await fs.readFile(templatePath, 'utf-8');
     const template = handlebars.compile(templateSource);
-
     const html = template({
-      name: resetToken.user.name || 'User', // Використання чітко визначеного поля name
-      link: `${process.env.FRONTEND_DOMAIN}/reset-password?token=${resetToken.token}`,
+      name: user.name,
+      link: `${process.env.APP_DOMAIN}/reset-password?token=${resetToken}`,
     });
 
-    await sendEmail({
-      from: process.env.SMTP_FROM, // Обов'язково вказуємо from з env
-      to: email,
-      subject: 'Reset your password',
-      html,
-    });
+    try {
+      await sendEmail({
+        from: process.env.SMTP_FROM,
+        to: email,
+        subject: 'Reset your password',
+        html,
+      });
+    } catch {
+      throw createHttpError(
+        500,
+        'Failed to send the email, please try again later.',
+      );
+    }
 
     res.status(200).json({
       status: 200,
@@ -131,7 +225,28 @@ export const requestResetEmail = async (req, res, next) => {
 
 export const resetPassword = async (req, res, next) => {
   try {
-    await resetPasswordService(req.body);
+    const { token, password } = req.body;
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch {
+      throw createHttpError(401, 'Token is expired or invalid.');
+    }
+
+    const user = await User.findOne({
+      _id: decoded.sub,
+      email: decoded.email,
+    });
+
+    if (!user) {
+      throw createHttpError(404, 'User not found!');
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await User.updateOne({ _id: user._id }, { password: hashedPassword });
+    await Session.deleteOne({ userId: user._id });
 
     res.status(200).json({
       status: 200,
