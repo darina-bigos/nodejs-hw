@@ -10,12 +10,13 @@ export const updateUserAvatar = async (req, res, next) => {
 
     const userId = req.user._id;
 
-    const uploadResult = await saveFileToCloudinary(req.file, userId);
+    // Передаємо буфер файлу та ID користувача
+    const uploadResult = await saveFileToCloudinary(req.file.buffer, userId);
 
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       { avatar: uploadResult.secure_url },
-      { new: true, returnDocument: 'after' },
+      { returnDocument: 'after' },
     );
 
     if (!updatedUser) {
