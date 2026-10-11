@@ -46,6 +46,20 @@ export const setSessionCookies = (res, session) => {
   });
 };
 
+export const registerUserService = async (payload) => {
+  const existingUser = await User.findOne({ email: payload.email });
+  if (existingUser) {
+    throw createHttpError(409, 'Email in use');
+  }
+
+  const hashedPassword = await bcrypt.hash(payload.password, 10);
+
+  return await User.create({
+    ...payload,
+    password: hashedPassword,
+  });
+};
+
 export const loginUserService = async ({ email, password }) => {
   const user = await User.findOne({ email });
   if (!user) {
