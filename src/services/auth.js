@@ -108,6 +108,15 @@ export const requestResetTokenService = async (email) => {
   if (!user) {
     throw createHttpError(404, 'User not found!');
   }
-
   return user;
+};
+
+export const resetPasswordService = async (payload) => {
+  const user = await User.findOne({ email: payload.email });
+  if (!user) {
+    throw createHttpError(404, 'User not found!');
+  }
+
+  const hashedPassword = await bcrypt.hash(payload.password, 10);
+  await User.updateOne({ _id: user._id }, { password: hashedPassword });
 };
