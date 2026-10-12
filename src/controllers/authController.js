@@ -28,7 +28,6 @@ export const registerUser = async (req, res, next) => {
     const session = await createSession(user._id);
     setSessionCookies(res, session);
 
-    // Повертаємо об'єкт користувача без пароля
     const userObj = user.toObject();
     delete userObj.password;
 
@@ -94,11 +93,13 @@ export const refreshUserSession = async (req, res, next) => {
 
     setSessionCookies(res, newSession);
 
-    const user = await User.findById(session.userId);
-    const userObj = user ? user.toObject() : {};
-    delete userObj.password;
-
-    res.status(200).json(userObj);
+    res.status(200).json({
+      status: 200,
+      message: 'Successfully refreshed a session!',
+      data: {
+        accessToken: newSession.accessToken,
+      },
+    });
   } catch (error) {
     next(error);
   }
